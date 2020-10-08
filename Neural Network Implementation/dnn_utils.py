@@ -10,8 +10,8 @@ def relu(Z):
 
 
 def sigmoid_backward(dA, Z):
-    sigmoid_z,Z = sigmoid(Z)
-    return dA * sigmoid_z * (1 - sigmoid_z) # A-Y
+    sigmoid_z, Z = sigmoid(Z)
+    return dA * sigmoid_z * (1 - sigmoid_z)  # A-Y
 
 
 def relu_backward(dA, Z):
@@ -86,7 +86,7 @@ def compute_cost_with_regularization(AL, Y, parameters, l2_lambda):
 def linear_backward(dZ, cache, l2_lambda):
     A_prev, W = cache
     m = A_prev.shape[1]
-    dW = (1 / m) * np.dot(dZ, A_prev.T) + (l2_lambda/m)*W
+    dW = (1 / m) * np.dot(dZ, A_prev.T) + (l2_lambda / m) * W
     db = (1 / m) * np.sum(dZ, axis=1, keepdims=True)
     dA_prev = np.dot(W.T, dZ)
     return dA_prev, dW, db
@@ -119,11 +119,73 @@ def model_backward(A_last, Y, caches, l2_lambda):
     current_cache = caches[L - 1]
     grads["dA" + str(L - 1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dA_last,
                                                                                                       current_cache,
-                                                                                                      "sigmoid",l2_lambda)
+                                                                                                      "sigmoid",
+                                                                                                      l2_lambda)
     for l in reversed(range(L - 1)):
         current_cache = caches[l]
-        dA_prev_temp, dW_temp, db_temp = linear_activation_backward(grads["dA" + str(l + 1)], current_cache, "relu", l2_lambda)
+        dA_prev_temp, dW_temp, db_temp = linear_activation_backward(grads["dA" + str(l + 1)], current_cache, "relu",
+                                                                    l2_lambda)
         grads["dA" + str(l)] = dA_prev_temp
         grads["dW" + str(l + 1)] = dW_temp
         grads["db" + str(l + 1)] = db_temp
     return grads
+
+
+# Momentum
+def initialize_velocities(parameters):
+    layer_num = len(parameters) // 2
+    velocities = {}
+    for l in range(layer_num):
+        velocities["dW" + str(l + 1)] = np.zeros(parameters['W' + str(l + 1)].shape)
+        velocities["db" + str(l + 1)] = np.zeros(parameters['b' + str(l + 1)].shape)
+    return velocities
+
+
+def update_parameters_with_momentum(parameters, grads, velocities, beta, learning_rate):
+    layer_num = len(parameters) // 2
+    for l in range(layer_num):
+        velocities["dW" + str(l + 1)] = beta * velocities["dW" + str(l + 1)] + (1 - beta) * grads["dW" + str(l + 1)]
+        velocities["db" + str(l + 1)] = beta * velocities["db" + str(l + 1)] + (1 - beta) * grads["db" + str(l + 1)]
+
+        parameters["W" + str(l + 1)] = np.subtract(parameters["W" + str(l + 1)],
+                                                   (learning_rate * velocities["dW" + str(l + 1)]))
+        parameters["b" + str(l + 1)] = np.subtract(parameters["b" + str(l + 1)],
+                                                   (learning_rate * velocities["db" + str(l + 1)]))
+
+    return parameters
+
+
+def get_batches_index(Y, batch_size):
+    m = Y.shape[1]
+    complete_mini_batch_count = m // batch_size
+    batch_indexes = []
+    for k in range(complete_mini_batch_count):
+        start_ind = k * batch_size
+        end_ind = start_ind + batch_size
+        batch_indexes.append((start_ind, end_ind))
+    if m % batch_size != 0:
+        start_ind = (k + 1) * batch_size
+        end_ind = m
+        batch_indexes.append((start_ind, end_ind))
+    return batch_indexes
+
+
+def initialize_params(initialize_type, layer_dims):
+    if initialize_type == "Xavier":
+        parameters = initialize_parameters_Xavier(layer_dims)
+    elif initialize_type == "He":
+        parameters = initialize_parameters_He(layer_dims)
+    else:
+        print("There is no initialization having the name %s. Please enter Xavier or He." % (initialize_type))
+    return parameters
+
+
+def one_iteration_of_network(X, Y, parameters, learning_rate, l2_lambda, optimizer="gd", velocities=None, beta=.9):
+    A_last, caches = model_forward(X, parameters)
+    cost = compute_cost_with_regularization(A_last, Y, parameters, l2_lambda)
+    grads = model_backward(A_last, Y, caches, l2_lambda)
+    if optimizer == "gd":
+        update_parameters(parameters, grads, learning_rate)
+    elif optimizer == "momentum":
+        update_parameters_with_momentum(parameters, grads, velocities, beta, learning_rate)
+    return cost
